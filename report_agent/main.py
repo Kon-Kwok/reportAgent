@@ -1,5 +1,5 @@
 import os
-from graph import build_book_writing_graph
+from .graph import build_book_writing_graph
 from dotenv import load_dotenv
 
 def main():

@@ -2,7 +2,7 @@ import os
 from langchain_openai import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 from langchain.schema import StrOutputParser
-from prompts import (
+from .prompts import (
     WRITER_TEMPLATE,
     REVIEWER_TEMPLATE,
     REFINER_TEMPLATE

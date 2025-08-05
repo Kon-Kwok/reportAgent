@@ -1,81 +1,48 @@
-# 多Agent报告撰写系统
+# 项目简介
 
-这是一个基于LangGraph构建的多Agent协作系统，旨在自动化生成包含多个章节的深度研究报告。
+本项目是一个基于 LangGraph 和大语言模型（LLM）的自动化图书撰写工具。它通过一个预定义的工作流，将一份完整的图书大纲自动分解为各个章节，并利用多智能体（Multi-Agent）协作模式（撰写、审校、润色）来逐一完成每个章节的撰写，最终将所有章节汇编成一部完整的书稿。
 
-系统通过编排不同的AI Agent（如首席架构师、研究分析师、编辑）来分工合作，完成从初稿撰写到最终整合润色的全过程。
+# 项目结构
 
-## 项目结构
+`report_agent` 包是本项目的核心，包含以下几个关键模块：
 
-```
-.
-├── agents.py         # 定义所有核心Agent的逻辑和提示词
-├── graph.py          # 使用LangGraph构建Agent协作的工作流
-├── main.py           # 项目主入口，负责启动和运行系统
-├── requirements.txt  # 项目所需的Python依赖
-├── .env              # 存放API密钥等环境变量
-└── README.md         # 项目说明文档
-```
+*   **`main.py`**: 项目的主入口文件。它负责加载必要的配置（如 API 密钥）、读取图书大纲、构建并执行整个图书撰写工作流，并在流程结束后保存最终生成的书稿。
 
-## 安装与配置
+*   **`agents.py`**: 定义了工作流中使用的各种智能体（Agent）。每个智能体都是一个配置了特定提示词（Prompt）的大语言模型实例，负责执行专门的任务，包括：
+    *   `Writer Agent`: 根据章节大纲撰写初稿。
+    *   `Reviewer Agent`: 对稿件进行审校，提出修改建议。
+    *   `Refiner Agent`: 根据审校意见对稿件进行优化和重写。
 
-**1. (推荐) 安装 uv**
-`uv` 是一个极速的Python包安装和解析器，可以用来替代 `pip` 和 `venv`。如果您的系统中没有安装 `uv`，请通过以下方式安装：
-```bash
-# macOS / Linux
-curl -LsSf https://astral.sh/uv/install.sh | sh
-# Windows
-powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
-```
+*   **`graph.py`**: 使用 LangGraph 库定义和构建了整个图书撰写的工作流。它包含两个核心部分：
+    *   **主工作流**: 负责将图书大纲解析为章节，并按顺序调用章节撰写子工作流。
+    *   **章节撰写子工作流**: 一个内部循环，通过“撰写-审校-润色”的协作模式，不断迭代优化单个章节的内容，直到满足质量要求。
 
-**2. 创建虚拟环境并安装依赖**
-在项目根目录下运行：
-```bash
-# 该命令会自动创建一个 .venv 虚拟环境，并安装 requirements.txt 中的所有依赖
-uv sync
-```
-之后，如需手动激活环境，请运行：
-```bash
-# Windows
-.venv\Scripts\activate
-# macOS / Linux
-source .venv/bin/activate
-```
+*   **`prompts.py`**: 存放了所有用于指导大语言模型生成内容的提示词模板。这些模板明确定义了每个智能体在工作流中需要扮演的角色和完成的具体任务。
 
-**3. 配置API密钥**
-本项目支持两种模型调用方式，请根据您的需求配置 `.env` 文件。
+# 如何运行
 
-**方式一：使用自定义OpenAI兼容模型（推荐）**
-如果您想使用自定义的、与OpenAI API格式兼容的模型（例如本地模型、或通过代理访问的Gemini/Claude等），请填写以下变量。**系统将优先使用这些变量。**
+在运行项目之前，请确保已完成以下准备工作：
 
-```.env
-# --- 自定义OpenAI兼容模型配置 ---
-GEMINI_URL="https://your-custom-endpoint.com/v1"
-GEMINI_API_KEY="your-custom-api-key"
-GEMINI_MODEL="your-custom-model-name"
-GEMINI_TEMPERATURE=0.3
-```
+1.  **安装依赖**:
+    ```bash
+    pip install -r requirements.txt
+    ```
 
-**方式二：使用OpenAI官方模型**
-如果未提供完整的自定义模型配置，系统将自动回退使用OpenAI官方API。请确保 `OPENAI_API_KEY` 已设置。
+2.  **配置环境变量**:
+    在项目根目录下创建一个 `.env` 文件，并填入必要的 API 密钥和模型配置，例如：
+    ```
+    GEMINI_API_KEY="YOUR_GEMINI_API_KEY"
+    OPENAI_API_BASE="YOUR_API_BASE_URL"
+    GEMINI_MODEL="gemini-pro"
+    ```
 
-```.env
-# --- 备用OpenAI官方配置 ---
-OPENAI_API_KEY="sk-..."
-```
+3.  **准备大纲文件**:
+    确保项目根目录下存在一个名为 `202508042315.md` 的图书大纲文件。
 
-## 如何运行
-
-完成安装和配置后，直接运行主程序即可启动报告生成工作流。
+完成上述步骤后，通过以下命令运行项目：
 
 ```bash
-python main.py
+python -m report_agent.main
 ```
 
-系统将开始执行，您会在终端看到当前使用的模型配置以及每个Agent的工作日志。工作流执行完毕后，最终的报告将自动保存为 `final_report.md` 文件。
-
-## 工作流概览
-
-系统的工作流在 `graph.py` 中定义，目前为一个简化的线性流程：
-1.  **首席架构师 (Architect)**: 负责撰写技术性强的第一章。
-2.  **研究分析师 (Analyst)**: 负责撰写实践性强的第二章。
-3.  **编辑与审校官 (Editor)**: 负责将前两章的初稿整合、润色，生成最终报告。
+程序将自动开始执行图书撰写工作流，并将最终生成的书稿保存为 `final_book.md`。
