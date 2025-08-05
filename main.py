@@ -1,5 +1,5 @@
 import os
-from .graph import build_book_writing_graph
+from report_agent.graph import build_book_writing_graph
 from dotenv import load_dotenv
 
 def main():
@@ -55,9 +55,12 @@ def main():
     # --- 5. 保存最终书稿 ---
     if final_state and final_state.get("final_book"):
         try:
-            with open("final_book.md", "w", encoding="utf-8") as f:
+            output_dir = "output"
+            os.makedirs(output_dir, exist_ok=True)
+            file_path = os.path.join(output_dir, "final_book.md")
+            with open(file_path, "w", encoding="utf-8") as f:
                 f.write(final_state["final_book"])
-            print("\n最终书稿已成功保存到 'final_book.md' 文件中。")
+            print(f"\n最终书稿已成功保存到 '{file_path}' 文件中。")
         except IOError as e:
             print(f"\n[错误] 保存最终书稿失败: {e}")
     else:
