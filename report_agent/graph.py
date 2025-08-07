@@ -1,10 +1,35 @@
-from typing import TypedDict, List
+import time
+import httpx
+import openai
+from typing import TypedDict, List, Callable, Any
 from langgraph.graph import StateGraph, END
 from .agents import (
     get_writer_agent,
     get_reviewer_agent,
     get_refiner_agent,
+    get_humanize_agent,
+    humanize_agent_node,
 )
+
+# 辅助函数：为 agent 调用添加重试逻辑
+def retry_on_read_error(agent_call: Callable, params: dict, max_retries: int = 3) -> Any:
+    """
+    一个包装函数，用于在发生 httpx.ReadError 或 openai.APIError 时重试 agent 调用。
+    """
+    attempt = 0
+    wait_time = 2  # 初始等待时间为2秒
+    while attempt < max_retries:
+        try:
+            return agent_call(params)
+        except (httpx.ReadError, openai.APIError, ValueError) as e:
+            attempt += 1
+            print(f"--- 警告: 发生 {type(e).__name__}: {e} ---")
+            if attempt >= max_retries:
+                print(f"--- 错误: 达到最大重试次数 ({max_retries})。任务失败。 ---")
+                raise  # 达到最大重试次数后，重新引发异常
+            print(f"--- 操作: 在 {wait_time} 秒后重试 (尝试次数 {attempt}/{max_retries}) ---")
+            time.sleep(wait_time)
+            wait_time *= 2  # 下次等待时间翻倍
 
 # 1. 定义工作流状态
 class BookWritingState(TypedDict):
@@ -72,10 +97,14 @@ def run_chapter_workflow_node(state: BookWritingState) -> BookWritingState:
     completed_chapter = final_chapter_state.get("refined_draft") or final_chapter_state.get("draft", "")
     
     # 更新主工作流状态
-    state['completed_chapters'].append(completed_chapter)
-    state['current_chapter_index'] = current_index + 1
+    new_completed_chapters = state['completed_chapters'] + [completed_chapter]
+    new_index = state['current_chapter_index'] + 1
     
-    return state
+    return {
+        **state,
+        "completed_chapters": new_completed_chapters,
+        "current_chapter_index": new_index,
+    }
 
 def compile_book_node(state: BookWritingState) -> BookWritingState:
     """
@@ -83,10 +112,10 @@ def compile_book_node(state: BookWritingState) -> BookWritingState:
     """
     print("--- 节点: 汇编最终书稿 ---")
     
-    final_book = "\n\n".join(state['completed_chapters'])
+    report = "\n\n".join(state['completed_chapters'])
     return {
         **state,
-        "final_book": final_book
+        "final_book": report
     }
 
 # 3. 定义主工作流条件判断
@@ -109,7 +138,7 @@ def write_node(state: ChapterWritingState) -> ChapterWritingState:
     """
     print("--- 节点: 撰写 ---")
     agent = get_writer_agent()
-    draft = agent.invoke({"outline": state['outline']})
+    draft = retry_on_read_error(agent.invoke, {"outline": state['outline']})
     
     # 初始化状态
     return {
@@ -128,7 +157,7 @@ def review_node(state: ChapterWritingState) -> ChapterWritingState:
     agent = get_reviewer_agent()
     # 优先审校润色稿，如果不存在则审校初稿
     current_draft = state.get("refined_draft") or state.get("draft", "")
-    review = agent.invoke({"draft": current_draft})
+    review = retry_on_read_error(agent.invoke, {"draft": current_draft})
     
     # 将新的审校意见添加到列表中
     state["reviews"].append(review)
@@ -145,7 +174,7 @@ def refine_node(state: ChapterWritingState) -> ChapterWritingState:
     # 获取用于润色的基础稿件
     base_draft = state.get("refined_draft") or state.get("draft", "")
     
-    refined_draft = agent.invoke({
+    refined_draft = retry_on_read_error(agent.invoke, {
         "draft": base_draft,
         "review": latest_review
     })
@@ -207,6 +236,26 @@ def build_chapter_writing_graph():
     print("章节撰写子工作流图已成功构建。")
     return app
 
+def humanizer_node_with_retry(state: BookWritingState) -> BookWritingState:
+    """
+    带重试逻辑的 Humanizer 节点。
+    """
+    print("--- 节点: 拟人化 (带重试逻辑) ---")
+    report = state.get('final_book', '')
+    if not report:
+        print("--- 警告: 在 humanizer_node_with_retry 中未找到报告内容，跳过。 ---")
+        return {**state, "final_book": ""}
+
+    agent = get_humanize_agent()
+    
+    # 使用重试包装器调用 agent
+    humanized_report = retry_on_read_error(
+        agent.invoke,
+        {"text_to_humanize": report}
+    )
+    
+    return {**state, "final_book": humanized_report}
+
 # 7. 构建主工作流图
 def build_book_writing_graph():
     """
@@ -218,12 +267,15 @@ def build_book_writing_graph():
     workflow.add_node("parse_outline", parse_outline_node)
     workflow.add_node("run_chapter_workflow", run_chapter_workflow_node)
     workflow.add_node("compile_book", compile_book_node)
+    # workflow.add_node("humanizer", humanize_agent) # 注释或删除这行
+    workflow.add_node("humanizer", humanizer_node_with_retry) # 添加这行
 
     # 设置入口点
     workflow.set_entry_point("parse_outline")
 
     # 添加边
-    workflow.add_edge("compile_book", END)
+    workflow.add_edge("compile_book", "humanizer")
+    workflow.add_edge("humanizer", END)
 
     # 添加条件边
     workflow.add_conditional_edges(

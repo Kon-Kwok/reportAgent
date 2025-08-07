@@ -5,7 +5,8 @@ from langchain.schema import StrOutputParser
 from .prompts import (
     WRITER_TEMPLATE,
     REVIEWER_TEMPLATE,
-    REFINER_TEMPLATE
+    REFINER_TEMPLATE,
+    humanize_agent_prompt
 )
 
 def create_llm_chain(template: str, default_temperature: float = 0.7):
@@ -67,3 +68,33 @@ def get_reviewer_agent():
 def get_refiner_agent():
     """获取章节润色Agent"""
     return create_llm_chain(REFINER_TEMPLATE)
+
+
+def get_humanize_agent():
+    """
+    获取“人化” agent。
+    这个 agent 接收最终报告，并将其“人化”，使其听起来更像顶级专家的手笔。
+    """
+    print("--- 获取 Humanizer Agent ---")
+    # 复用现有的链创建函数，传入humanize prompt
+    # 注意：create_llm_chain 默认返回带 StrOutputParser() 的链
+    # 这对于直接获取字符串内容的场景是完美的。
+    return create_llm_chain(humanize_agent_prompt, default_temperature=0.7)
+
+def humanize_agent_node(state):
+    """
+    “人化” agent 的图节点。
+    负责调用 agent 并处理状态更新。
+    """
+    print("--- 节点: 拟人化 ---")
+    report = state.get('report', '')
+    if not report:
+        print("--- 警告: 在 humanize_agent_node 中未找到报告内容，跳过拟人化。 ---")
+        return {"report": ""}
+
+    agent = get_humanize_agent()
+    
+    # 注意：这里的输入键 "text_to_humanize" 必须与 prompt 模板中的占位符一致
+    humanized_report = agent.invoke({"text_to_humanize": report})
+    
+    return {"report": humanized_report}
