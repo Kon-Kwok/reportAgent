@@ -6,7 +6,8 @@ from .prompts import (
     WRITER_TEMPLATE,
     REVIEWER_TEMPLATE,
     REFINER_TEMPLATE,
-    humanize_agent_prompt
+    humanize_agent_prompt,
+    enrich_outline_prompt
 )
 
 def create_llm_chain(template: str, default_temperature: float = 0.7):
@@ -98,3 +99,22 @@ def humanize_agent_node(state):
     humanized_report = agent.invoke({"text_to_humanize": report})
     
     return {"report": humanized_report}
+def get_enrich_outline_agent():
+    """获取丰富大纲Agent"""
+    return create_llm_chain(enrich_outline_prompt)
+
+
+def enrich_outline_agent(outline: str) -> str:
+    """
+    接收一个Markdown格式的大纲，分析其中的二级标题，
+    并为每个二级标题生成更详细的子要点或说明。
+
+    Args:
+        outline: Markdown格式的报告大纲。
+
+    Returns:
+        更新后的、同样是Markdown格式的大纲字符串。
+    """
+    agent = get_enrich_outline_agent()
+    enriched_outline = agent.invoke({"outline": outline})
+    return enriched_outline

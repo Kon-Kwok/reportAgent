@@ -9,6 +9,7 @@ from .agents import (
     get_refiner_agent,
     get_humanize_agent,
     humanize_agent_node,
+    get_enrich_outline_agent,
 )
 
 # 辅助函数：为 agent 调用添加重试逻辑
@@ -59,6 +60,22 @@ class ChapterWritingState(TypedDict):
     max_iterations: int
 
 # 2. 定义主工作流节点
+def enrich_outline_node(state: BookWritingState) -> BookWritingState:
+    """
+    丰富节点：调用 agent 来丰富和扩展初始大纲。
+    """
+    print("--- 节点: 丰富大纲 ---")
+    agent = get_enrich_outline_agent()
+    enriched_outline = retry_on_read_error(
+        agent.invoke,
+        {"outline": state['book_outline']}
+    )
+    return {
+        **state,
+        "book_outline": enriched_outline
+    }
+
+
 def parse_outline_node(state: BookWritingState) -> BookWritingState:
     """
     解析节点：将图书大纲分解为章节大纲。
@@ -264,6 +281,7 @@ def build_book_writing_graph():
     workflow = StateGraph(BookWritingState)
 
     # 添加节点
+    workflow.add_node("enrich_outline", enrich_outline_node)
     workflow.add_node("parse_outline", parse_outline_node)
     workflow.add_node("run_chapter_workflow", run_chapter_workflow_node)
     workflow.add_node("compile_book", compile_book_node)
@@ -271,9 +289,10 @@ def build_book_writing_graph():
     workflow.add_node("humanizer", humanizer_node_with_retry) # 添加这行
 
     # 设置入口点
-    workflow.set_entry_point("parse_outline")
+    workflow.set_entry_point("enrich_outline")
 
     # 添加边
+    workflow.add_edge("enrich_outline", "parse_outline")
     workflow.add_edge("compile_book", "humanizer")
     workflow.add_edge("humanizer", END)
 
