@@ -44,8 +44,8 @@ def create_llm_chain(template: str, default_temperature: float = 0.7):
             temperature=temperature,
             openai_api_base=base_url,
             openai_api_key=api_key,
+            max_retries=3,
             # LangChain的某些版本需要明确指定streaming，以确保兼容性
-            streaming=True,
         )
     else:
         # 如果关键配置不完整，则无法继续

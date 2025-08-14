@@ -16,11 +16,11 @@ def main():
 
     # --- 2. 加载图书大纲 ---
     try:
-        with open("202508042315.md", "r", encoding="utf-8") as f:
+        with open("input.md", "r", encoding="utf-8") as f:
             book_outline = f.read()
         print("图书大纲已成功加载。")
     except FileNotFoundError:
-        print("[错误] 未找到大纲文件 '202508042315.md'。请确保文件存在于正确的位置。")
+        print("[错误] 未找到大纲文件 'input.md'。请确保文件存在于正确的位置。")
         return
     except Exception as e:
         print(f"[错误] 读取大纲文件时发生错误: {e}")
